@@ -5,10 +5,18 @@ from backend.services.ingestion_service import load_and_chunk_documents
 from backend.services.embedding_service import get_embedding
 from backend.services.vector_store import add_to_vector_store, search_vector_store
 from pydantic import BaseModel
-
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 app.include_router(chat_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def home():
