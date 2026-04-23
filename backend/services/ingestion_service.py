@@ -28,7 +28,7 @@ def load_documents():
 # Need to split documents into data chunks, this makes it easier for an LLM to digest info, as well
 # as get relevant info based on certain chunks rather than getting all of them.
 
-def chunk_text(text, chunk_size=200):
+def chunk_text(documents, chunk_size=200):
     """
     Splits a large piece of text into smaller chunks.
     So that:
@@ -37,15 +37,16 @@ def chunk_text(text, chunk_size=200):
 
     chunk_size = number of words per chunk
     """
-    words = text.split() # Split text into individual words
     chunks = []
 
-     # Loop through words in steps of chunk_size
-    for i in range(0, len(words), chunk_size):
-        # Take a slice of words and join them back into a string
-        chunk = " ".join(words[i:i + chunk_size])
-        # Add this chunk to list
-        chunks.append(chunk)
+    for doc in documents:
+        words = doc.split() # Split text into individual words
+        # Loop through words in steps of chunk_size
+        for i in range(0, len(words), chunk_size):
+            # Take a slice of words and join them back into a string
+            chunk = " ".join(words[i:i + chunk_size])
+            # Add this chunk to list
+            chunks.append(chunk)
 
     return chunks
 
