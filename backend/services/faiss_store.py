@@ -71,7 +71,13 @@ def load_index():
         print("No existing FAISS index found.")
 
 
-def search(query_embedding: list, top_k: int = 3):
+"""
+Threshold values affect how strong/weak want to filter out the weaker matches:
+1.0 -> strict (few results)
+1.5 -> balanced (moderate results)
+2.0 -> loose (more results)
+"""
+def search(query_embedding: list, top_k: int = 5, threshold: float = 1.5):
     """
     Perform similarity search using FAISS.
     Returns top_k matching text chunks. (Similar to a KNN alogrithim)
@@ -87,10 +93,12 @@ def search(query_embedding: list, top_k: int = 3):
 
     results = []
     seen = set() # want to avoid using the same chunks
-    for idx in indices[0]:
+    for i, idx in enumerate(indices[0]):
         if idx < len(metadata):
+            distance = distances[0][i] # want to be able to filter out weaker matches
             text = metadata[idx]
-            if text not in seen:
+
+            if distance < threshold and text not in seen:
                 results.append(text)
                 seen.add(text)
 

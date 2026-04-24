@@ -2,6 +2,8 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
+'''FILE OBJECTIVE: How raw text data gets converted (embedded)'''
+
 # Load environment variables from .env
 load_dotenv()
 # Initialize OpenAI client

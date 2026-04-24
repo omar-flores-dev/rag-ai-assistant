@@ -2,6 +2,8 @@ import os
 
 DATA_PATH = "data/"
 
+'''FILE OBJECTIVE: How data is prepared'''
+
 # Read files from /data and load the text into memory, the goal is to essentially provide useful context/data
 # to the llm, thus provide better quality responses.
 
@@ -28,25 +30,28 @@ def load_documents():
 # Need to split documents into data chunks, this makes it easier for an LLM to digest info, as well
 # as get relevant info based on certain chunks rather than getting all of them.
 
-def chunk_text(documents, chunk_size=200):
+def chunk_text(documents, chunk_size=100, overlap=20):
     """
-    Splits a large piece of text into smaller chunks.
+    Splits a large piece of text into smaller overlapping chunks.
     So that:
     - LLMs and embeddings work better with smaller text segments
     - Later, each chunk will become an embedding
 
     chunk_size = number of words per chunk
+    Overlaps will allow to improve quality of the retrievals but it will also preserve continuity in context
     """
     chunks = []
 
     for doc in documents:
         words = doc.split() # Split text into individual words
         # Loop through words in steps of chunk_size
-        for i in range(0, len(words), chunk_size):
-            # Take a slice of words and join them back into a string
-            chunk = " ".join(words[i:i + chunk_size])
-            # Add this chunk to list
-            chunks.append(chunk)
+
+        start = 0
+        while start < len(words):
+            end = start + chunk_size
+            chunk = " ".join(words[start:end]) # add the words together as a chunk
+            chunks.append(chunk) # add chunk to list
+            start += chunk_size - overlap  # overlap step
 
     return chunks
 
