@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from backend.routes.chat import router as chat_router
-from backend.services.ingestion_service import load_and_chunk_documents, load_documents, chunk_text
+from backend.services.ingestion_service import load_documents_structured
 from backend.services.faiss_store import load_index
 from backend.services.faiss_store import (
     create_faiss_index,
@@ -27,39 +27,56 @@ app.add_middleware(
 def home():
     return {"status": "API running"}
 
-# test the chunking system
+# test the ingestion system
 @app.get("/test-ingestion")
 def test_ingestion():
-    chunks = load_and_chunk_documents()
-    return {"chunks": chunks}
+    """
+    Debug endpoint for verifying structured ingestion pipeline.
+
+    Returns:
+    - number of structured document sections loaded
+    - sample document for inspection
+    """
+    structured_docs = load_documents_structured()
+
+    return {
+        "num_docs": len(structured_docs),
+        "sample": structured_docs[0] if structured_docs else None
+    }
 
 @app.get("/build-index")
 def build_index():
     """
-    Reads documents, chunks them, creates embeddings,
-    and stores them in FAISS.
+    End-to-end indexing pipeline:
+
+    1. Load structured documents (section-level granularity)
+    2. Convert each section into embeddings
+    3. Store embeddings in FAISS vector index
+    4. Persist index for retrieval at query time
+
+    NOTE:
+    - This version does NOT yet include hybrid chunking
+    - Each section currently acts as a single embedding unit
+    - Future improvement: hierarchical chunking (section → sub-chunks)
     """
 
-    # Step 1: Load raw text
-    documents = load_documents()
+    structured_docs = load_documents_structured()
 
-    # Step 2: Chunk text
-    chunks = chunk_text(documents)
+    # Extract raw text from structured documents
+    texts = [d["text"] for d in structured_docs]
 
-    # Step 3: Generate embeddings
-    embeddings = [get_embedding(chunk) for chunk in chunks]
+    embeddings = [get_embedding(text) for text in texts]
 
-    # Step 4: Create FAISS index
+    # FAISS expects fixed dimensional vectors
     dimension = len(embeddings[0])
+
     create_faiss_index(dimension)
 
-    # Step 5: Add data
-    add_embeddings(embeddings, chunks)
+    add_embeddings(embeddings, texts)
 
-    # Step 6: Save to disk
     save_index()
 
-    return {"message": f"Indexed {len(chunks)} chunks"}
+    return {"message": f"Indexed {len(texts)} document sections"}
 
 class QueryRequest(BaseModel):
     query: str
