@@ -1,76 +1,95 @@
 import os
+import json
 
-DATA_PATH = "data/"
+DATA_PATH = "backend/data/raw"
 
-'''FILE OBJECTIVE: How data is prepared'''
+"""
+FILE OBJECTIVE:
+Structured document ingestion layer for the RAG pipeline.
 
-# Read files from /data and load the text into memory, the goal is to essentially provide useful context/data
-# to the llm, thus provide better quality responses.
+This module is responsible for:
+- Loading documents from multiple source types (research papers, websites, docs, etc.)
+- Parsing structured metadata (metadata.json)
+- Extracting section-based content from each document
+- Returning normalized document objects for downstream embedding + chunking
 
-# read all files within /data, load them into memory, and return a list of docs
-def load_documents():
+NOTE:
+This is NOT final chunking yet. It is a structured pre-processing stage.
+Final chunking (semantic or hybrid) happens downstream in the pipeline.
+"""
+
+
+def load_documents_structured():
     """
-    Reads all files from the data directory and returns their content as a list of strings.
-    Where each file = one document.
+    Loads structured document folders like:
+
+    backend/data/raw/
+      research_papers/
+        doc_001/
+          metadata.json
+          sections/
+            abstract.txt
+            introduction.txt
     """
-    documents = []
-    # Loop through every file in /data
-    for filename in os.listdir(DATA_PATH):
-        filepath = os.path.join(DATA_PATH, filename)
 
-         # Make sure to focus on file types
-        if os.path.isfile(filepath):
-            with open(filepath, "r", encoding="utf-8") as f:
-                content = f.read()
-                # Add the full document text to our list
-                documents.append(content)
-
-    return documents
-
-# Need to split documents into data chunks, this makes it easier for an LLM to digest info, as well
-# as get relevant info based on certain chunks rather than getting all of them.
-
-def chunk_text(documents, chunk_size=100, overlap=20):
-    """
-    Splits a large piece of text into smaller overlapping chunks.
-    So that:
-    - LLMs and embeddings work better with smaller text segments
-    - Later, each chunk will become an embedding
-
-    chunk_size = number of words per chunk
-    Overlaps will allow to improve quality of the retrievals but it will also preserve continuity in context
-    """
-    chunks = []
-
-    for doc in documents:
-        words = doc.split() # Split text into individual words
-        # Loop through words in steps of chunk_size
-
-        start = 0
-        while start < len(words):
-            end = start + chunk_size
-            chunk = " ".join(words[start:end]) # add the words together as a chunk
-            chunks.append(chunk) # add chunk to list
-            start += chunk_size - overlap  # overlap step
-
-    return chunks
-
-
-def load_and_chunk_documents():
-    """
-    Full pipeline:
-    1. Load documents
-    2. Break each document into chunks
-    3. Return ALL chunks in one list
-    """
-    docs = load_documents()
     all_chunks = []
 
-    # Process each document individually
-    for doc in docs:
-        chunks = chunk_text(doc)
+    # Iterate over source categories (extensible design)
+    # Examples:
+    # - research_papers
+    # - websites
+    # - documentation
+    for source_type in os.listdir(DATA_PATH):
 
-        # Add all chunks from this document into the master list (all_chunks)
-        all_chunks.extend(chunks)
+        source_path = os.path.join(DATA_PATH, source_type)
 
+        if not os.path.isdir(source_path):
+            continue
+
+        # Iterate over individual documents within a source type
+        for doc_folder in os.listdir(source_path):
+
+            doc_path = os.path.join(source_path, doc_folder)
+
+            if not os.path.isdir(doc_path):
+                continue
+
+            metadata_path = os.path.join(doc_path, "metadata.json")
+
+            if not os.path.exists(metadata_path):
+                continue
+
+            # Load document metadata (used for structure + future citation support)
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+            sections_path = os.path.join(doc_path, "sections")
+
+            # Load each section defined in metadata
+            for section in metadata.get("sections", []):
+
+                safe_section_name = section.lower().replace(" ", "_")
+                section_file = os.path.join(sections_path, f"{safe_section_name}.txt")
+
+                if not os.path.exists(section_file):
+                    print(f"Missing section file: {section_file}")
+                    continue
+
+                with open(section_file, "r", encoding="utf-8") as f:
+                    text = f.read()
+
+                # Structured document unit (NOT final embedding chunk yet)
+                all_chunks.append({
+                    "text": text,
+                    "source": metadata["document_id"],
+                    "source_type": source_type,
+                    "section": section,
+                    "title": metadata.get("title", ""),
+                    "url": metadata.get("source", {}).get("url", ""),
+                    "pdf": metadata.get("source", {}).get("pdf", ""),
+                    "authors": metadata.get("authors", []),
+                    "year": metadata.get("year", "")
+                })
+
+    print(f"Loaded {len(all_chunks)} structured document sections.")
     return all_chunks
