@@ -1,0 +1,33 @@
+{
+  "document_id": "doc_0001_rag",
+  "title": "Retrieval-Augmented Generation for Large Language Models: A Survey",
+  "authors": ["Yunfan Gao", 
+    "Yun Xiong", 
+    "Xinyu Gao", 
+    "Kangxiang Jia", 
+    "Jinliu Pan", 
+    "Yuxi Bi", 
+    "Yi Dai", 
+    "Jiawei Sun", 
+    "Meng Wang", 
+    "Haofen Wang"
+    ],
+  "year": 2024,
+  "source": {
+    "type": "arxiv",
+    "url": "https://arxiv.org/abs/2312.10997",
+    "pdf": "https://arxiv.org/pdf/2312.10997.pdf"
+  },
+  "license": "arXiv",
+  "sections": ["abstract", 
+    "overview_of_rag", 
+    "retrieval", 
+    "generation", 
+    "augmentation_process_in_rag", 
+    "task_and_evaluation", 
+    "discussion_and_future_prospects", 
+    "conclusion"
+],
+  "domain": "machine_learning",
+  "source_type": "research_paper"
+}
