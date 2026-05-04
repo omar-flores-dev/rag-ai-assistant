@@ -4,11 +4,21 @@ import json
 import numpy as np
 
 """
-This file essentially does:
-- Create a FAISS index (store/search vectors)
-- Creates the metadata list (text chunks with the associated FAISS index ids)
-- Has save/load functions (persistence for the index and associated metadata)
-- Has search function (leverages FAISS to essentially return the most similar text chunks from the top-n similar vectors)
+FAISS VECTOR STORE MODULE
+
+This module is responsible for:
+- Creating and managing FAISS vector index
+- Storing embeddings + associated metadata
+- Persisting index to disk for reuse
+- Performing similarity search over stored vectors
+
+Similarity Method:
+- Uses FAISS IndexFlatIP (Inner Product)
+- With vector normalization → equivalent to cosine similarity
+
+Design Note:
+- Metadata is currently stored separately from FAISS index
+- Each embedding corresponds 1-to-1 with a text section
 """
 
 # Paths for persistence
@@ -22,19 +32,28 @@ metadata = []
 
 def create_faiss_index(dimension: int):
     """
-    Create a FAISS index using L2 distance (Euclidean Distance).
+    Initialize FAISS index for cosine similarity search.
+
+    Uses:
+    - IndexFlatIP (inner product)
+    - L2 normalization applied during insertion/query
     """
     global index
-    index = faiss.IndexFlatL2(dimension)
-
+    index = faiss.IndexFlatIP(dimension)
 
 def add_embeddings(embeddings: list, texts: list):
     """
-    Add embeddings + corresponding text to FAISS + metadata.
+    Stores embeddings in FAISS and maintains parallel metadata list.
+
+    Important:
+    - embeddings and texts MUST be aligned (same ordering)
+    - vectors are normalized for cosine similarity search
     """
     global index, metadata
 
     vectors = np.array(embeddings).astype("float32")
+    # normalize for cosine similarity
+    faiss.normalize_L2(vectors)
     index.add(vectors)
 
     metadata.extend(texts)
@@ -77,10 +96,17 @@ Threshold values affect how strong/weak want to filter out the weaker matches:
 1.5 -> balanced (moderate results)
 2.0 -> loose (more results)
 """
-def search(query_embedding: list, top_k: int = 5, threshold: float = 1.5):
+def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
     """
-    Perform similarity search using FAISS.
-    Returns top_k matching text chunks. (Similar to a KNN alogrithim)
+    Performs similarity search over FAISS index.
+
+    Returns:
+    - Top-K most similar text chunks
+
+    Note:
+    - Currently returns raw text only
+    - Future improvement: return structured metadata + citations
+    - Threshold filtering is currently disabled for stability
     """
     global index, metadata
 
@@ -88,6 +114,7 @@ def search(query_embedding: list, top_k: int = 5, threshold: float = 1.5):
         return []
 
     query_vector = np.array([query_embedding]).astype("float32")
+    faiss.normalize_L2(query_vector)
 
     distances, indices = index.search(query_vector, top_k)
 
@@ -97,9 +124,7 @@ def search(query_embedding: list, top_k: int = 5, threshold: float = 1.5):
         if idx < len(metadata):
             distance = distances[0][i] # want to be able to filter out weaker matches
             text = metadata[idx]
-
-            if distance < threshold and text not in seen:
-                results.append(text)
-                seen.add(text)
+            results.append(text)
+            seen.add(text)
 
     return results
