@@ -49,15 +49,27 @@ def build_index():
     """
     End-to-end indexing pipeline:
 
-    1. Load structured documents (section-level granularity)
-    2. Convert each section into embeddings
-    3. Store embeddings in FAISS vector index
-    4. Persist index for retrieval at query time
+    1. Load structured documents (multi-source, section-aware ingestion)
+    2. Apply hybrid chunking (section → overlapping retrieval chunks)
+    3. Convert each chunk into embeddings
+    4. Store embeddings in FAISS vector index
+    5. Persist index and metadata for runtime retrieval
+
+    PIPELINE DESIGN:
+    - Ingestion layer provides structured sections with full metadata
+    - Chunking layer splits sections into smaller retrieval-optimized chunks
+    - Embedding layer maps each chunk into vector space
+    - Vector store enables fast semantic search via FAISS
 
     NOTE:
-    - This version does NOT yet include hybrid chunking
-    - Each section currently acts as a single embedding unit
-    - Future improvement: hierarchical chunking (section → sub-chunks)
+    - Hybrid chunking is now implemented (section + sub-section retrieval chunks)
+    - Each embedding represents a retrieval-level chunk, not a full section
+    - This improves retrieval granularity and context relevance in RAG responses
+
+    FUTURE IMPROVEMENTS:
+    - Add metadata-aware retrieval filtering (source_type, year, authors)
+    - Implement MMR (Maximal Marginal Relevance) for diversity in results
+    - Add citation tracing (chunk → section → document mapping)
     """
 
     structured_docs = load_documents_structured()

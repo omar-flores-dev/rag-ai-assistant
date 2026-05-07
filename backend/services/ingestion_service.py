@@ -8,16 +8,63 @@ FILE OBJECTIVE:
 Structured document ingestion layer for the RAG pipeline.
 
 This module is responsible for:
-- Loading documents from multiple source types (research papers, websites, docs, etc.)
+- Loading documents from multiple source types (research papers, websites, documentation, etc.)
 - Parsing structured metadata (metadata.json)
-- Extracting section-based content from each document
-- Returning normalized document objects for downstream embedding + chunking
+- Extracting section-level content from each document
+- Preserving source-level metadata for future citation and traceability
+- Preparing data for downstream hybrid chunking and embedding
+
+PIPELINE STAGE:
+This is a structured preprocessing stage in the RAG pipeline.
+
+Each document is first broken into semantic sections, then further
+processed into hybrid retrieval chunks downstream.
 
 NOTE:
-This is NOT final chunking yet. It is a structured pre-processing stage.
-Final chunking (semantic or hybrid) happens downstream in the pipeline.
+This is NOT final chunking.
+Final hybrid chunking (section-aware + overlapping retrieval chunks)
+happens after this stage before embedding generation.
 """
 
+
+def chunk_section_text(text, chunk_size=250, overlap=50):
+    """
+    Splits a section into smaller overlapping word-based chunks. I.e chunk with 250 words, but overlap with 50 words (helps preserve context in some cases)
+
+    Why:
+    Large sections reduce embedding precision.
+    Smaller chunks improve retrieval relevance.
+
+    Potential Future upgrade:
+    Replace with token-based chunking or sentence-aware chunking.
+    """
+
+    #split words
+    words = text.split()
+        
+    chunks = []
+
+    #start at the begining of a section (the first word)
+    start = 0
+
+    # loop through all words of a given section,
+    while start < len(words):
+
+        # set the end of the 250 word collection based on the current position of the word
+        end = start + chunk_size
+
+        # collect all the words from the starting pos to the end pos
+        chunk_words = words[start:end]
+
+        # form it back into corresponding sentences
+        chunks.append(
+            " ".join(chunk_words)
+        )
+
+        # set the new starting point but account for overlap to preserve context (want to avoid finishing a chunk in the middle of a sentence)
+        start += (chunk_size - overlap)
+
+    return chunks
 
 def load_documents_structured():
     """
@@ -67,7 +114,6 @@ def load_documents_structured():
 
             # Load each section defined in metadata
             for section in metadata.get("sections", []):
-
                 safe_section_name = section.lower().replace(" ", "_")
                 section_file = os.path.join(sections_path, f"{safe_section_name}.txt")
 
@@ -77,19 +123,24 @@ def load_documents_structured():
 
                 with open(section_file, "r", encoding="utf-8") as f:
                     text = f.read()
+                # Hybrid chunking:
+                # Section = semantic boundary
+                # Chunk = retrieval boundary
+                section_chunks = chunk_section_text(text)
 
-                # Structured document unit (NOT final embedding chunk yet)
-                all_chunks.append({
-                    "text": text,
-                    "source": metadata["document_id"],
-                    "source_type": source_type,
-                    "section": section,
-                    "title": metadata.get("title", ""),
-                    "url": metadata.get("source", {}).get("url", ""),
-                    "pdf": metadata.get("source", {}).get("pdf", ""),
-                    "authors": metadata.get("authors", []),
-                    "year": metadata.get("year", "")
-                })
+                for chunk_index, chunk in enumerate(section_chunks):
 
-    print(f"Loaded {len(all_chunks)} structured document sections.")
+                    all_chunks.append({
+                        "text": chunk,
+                        "source": metadata["document_id"],
+                        "source_type": source_type,
+                        "section": section,
+                        "chunk_id": chunk_index,
+                        "title": metadata.get("title", ""),
+                        "url": metadata.get("source", {}).get("url", ""),
+                        "pdf": metadata.get("source", {}).get("pdf", ""),
+                        "authors": metadata.get("authors", []),
+                        "year": metadata.get("year", "")
+                    })
+
     return all_chunks
