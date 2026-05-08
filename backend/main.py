@@ -53,42 +53,46 @@ def build_index():
     2. Apply hybrid chunking (section → overlapping retrieval chunks)
     3. Convert each chunk into embeddings
     4. Store embeddings in FAISS vector index
-    5. Persist index and metadata for runtime retrieval
+    5. Persist chunk metadata for runtime retrieval + citation tracing
 
     PIPELINE DESIGN:
-    - Ingestion layer provides structured sections with full metadata
-    - Chunking layer splits sections into smaller retrieval-optimized chunks
+    - Ingestion layer provides structured sections with rich metadata
+    - Chunking layer splits sections into retrieval-optimized chunks
     - Embedding layer maps each chunk into vector space
-    - Vector store enables fast semantic search via FAISS
+    - Vector store enables fast semantic retrieval
+    - Metadata layer preserves chunk → section → document traceability
 
-    NOTE:
-    - Hybrid chunking is now implemented (section + sub-section retrieval chunks)
-    - Each embedding represents a retrieval-level chunk, not a full section
-    - This improves retrieval granularity and context relevance in RAG responses
+    CURRENT CAPABILITIES:
+    - Hybrid chunking implemented
+    - Citation-aware chunk metadata stored with every embedding
+    - Retrieval returns both chunk text and source metadata
 
     FUTURE IMPROVEMENTS:
-    - Add metadata-aware retrieval filtering (source_type, year, authors)
-    - Implement MMR (Maximal Marginal Relevance) for diversity in results
-    - Add citation tracing (chunk → section → document mapping)
+    - Add metadata-aware filtering (source_type, year, authors)
+    - Implement MMR (Maximal Marginal Relevance)
+    - Add cross-encoder reranking
     """
 
     structured_docs = load_documents_structured()
 
-    # Extract raw text from structured documents
-    texts = [d["text"] for d in structured_docs]
-
-    embeddings = [get_embedding(text) for text in texts]
+    embeddings = [get_embedding(chunk["text"]) for chunk in structured_docs]
 
     # FAISS expects fixed dimensional vectors
     dimension = len(embeddings[0])
 
     create_faiss_index(dimension)
 
-    add_embeddings(embeddings, texts)
+    add_embeddings(embeddings, structured_docs)
 
     save_index()
 
-    return {"message": f"Indexed {len(texts)} document sections"}
+    return {
+    "message": f"Indexed {len(structured_docs)} chunks",
+    "source_types": list(set(
+        chunk["source_type"]
+        for chunk in structured_docs
+        ))
+    }
 
 class QueryRequest(BaseModel):
     query: str

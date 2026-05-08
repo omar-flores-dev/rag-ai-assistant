@@ -7,18 +7,20 @@ import numpy as np
 FAISS VECTOR STORE MODULE
 
 This module is responsible for:
-- Creating and managing FAISS vector index
-- Storing embeddings + associated metadata
+- Creating and managing the FAISS vector index
+- Storing chunk embeddings + associated metadata
 - Persisting index to disk for reuse
-- Performing similarity search over stored vectors
+- Performing semantic similarity search
 
 Similarity Method:
 - Uses FAISS IndexFlatIP (Inner Product)
 - With vector normalization → equivalent to cosine similarity
 
-Design Note:
-- Metadata is currently stored separately from FAISS index
-- Each embedding corresponds 1-to-1 with a text section
+Design Notes:
+- Each embedding corresponds to a hybrid retrieval chunk
+  (section → chunk)
+- Metadata is stored separately but kept index-aligned
+- Retrieved results preserve source traceability for citations
 """
 
 # Paths for persistence
@@ -41,13 +43,14 @@ def create_faiss_index(dimension: int):
     global index
     index = faiss.IndexFlatIP(dimension)
 
-def add_embeddings(embeddings: list, texts: list):
+def add_embeddings(embeddings: list, chunks: list):
     """
-    Stores embeddings in FAISS and maintains parallel metadata list.
+    Stores embeddings in FAISS while preserving aligned chunk metadata.
 
     Important:
-    - embeddings and texts MUST be aligned (same ordering)
-    - vectors are normalized for cosine similarity search
+    - embeddings and chunks MUST remain in identical order
+    - vectors are normalized for cosine similarity retrieval
+    - metadata includes source, section, chunk_id, title, and citation info
     """
     global index, metadata
 
@@ -56,7 +59,7 @@ def add_embeddings(embeddings: list, texts: list):
     faiss.normalize_L2(vectors)
     index.add(vectors)
 
-    metadata.extend(texts)
+    metadata.extend(chunks)
 
 
 def save_index():
@@ -98,15 +101,21 @@ Threshold values affect how strong/weak want to filter out the weaker matches:
 """
 def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
     """
-    Performs similarity search over FAISS index.
+    Performs semantic similarity search over FAISS.
 
     Returns:
-    - Top-K most similar text chunks
+    - Top-K retrieved chunks with full metadata
+
+    Retrieval Output:
+    - chunk text
+    - source document
+    - section name
+    - chunk_id
+    - citation metadata
 
     Note:
-    - Currently returns raw text only
-    - Future improvement: return structured metadata + citations
-    - Threshold filtering is currently disabled for stability
+    - Threshold filtering is temporarily disabled for retrieval stability
+    - Next improvement: reranking for better result ordering
     """
     global index, metadata
 
@@ -123,8 +132,14 @@ def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
     for i, idx in enumerate(indices[0]):
         if idx < len(metadata):
             distance = distances[0][i] # want to be able to filter out weaker matches
-            text = metadata[idx]
-            results.append(text)
-            seen.add(text)
+            chunk = metadata[idx]
+            chunk_key = (
+                chunk["source"],
+                chunk["section"],
+                chunk["chunk_id"]
+            )
+            if chunk_key not in seen:
+                results.append(chunk)
+                seen.add(chunk_key)
 
     return results
