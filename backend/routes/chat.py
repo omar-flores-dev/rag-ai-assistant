@@ -3,22 +3,25 @@ from pydantic import BaseModel
 from backend.services.llm_service import get_llm_response
 from backend.services.embedding_service import get_embedding
 from backend.services.faiss_store import search
+from backend.services.reranker_service import rerank_chunks
 
 '''FILE OBJECTIVE:
-RAG inference pipeline (retrieval + grounded generation).
+RAG inference pipeline (retrieval + reranking + grounded generation).
 
 Flow:
 1. Convert user query into embedding
-2. Retrieve semantically relevant chunks from FAISS
-3. Extract chunk text for LLM grounding
-4. Return generated answer with chunk-level citations
+2. Retrieve candidate chunks from FAISS vector store
+3. Rerank chunks for lexical/query relevance
+4. Extract chunk text for LLM grounding
+5. Return generated answer with chunk-level citations
 
 Design Notes:
 - Retrieval uses hybrid chunk embeddings
+- FAISS provides semantic recall
+- Reranker improves precision before generation
 - Each retrieved chunk preserves source traceability
 - Citations map answers back to section + document level
 '''
-
 
 router = APIRouter()
 
@@ -31,9 +34,10 @@ def chat(req: ChatRequest):
     End-to-end RAG inference pipeline:
 
     Step 1: Embed user query
-    Step 2: Retrieve relevant chunks from vector store
-    Step 3: Ground LLM response using retrieved chunk text
-    Step 4: Return answer with citation metadata
+    Step 2: Retrieve candidate chunks from vector store
+    Step 3: Rerank chunks for relevance
+    Step 4: Ground LLM response using chunk text
+    Step 5: Return answer with citation metadata
 
     Returns:
     - response: grounded LLM answer
@@ -41,9 +45,18 @@ def chat(req: ChatRequest):
     """
     # Step 1: Convert user query into embedding
     query_embedding = get_embedding(req.message)
-    # Step 2: Retrieve relevant chunks
-    relevant_chunks = search(query_embedding, top_k=3)
-    # Step 3: Generate response using context
+    # Step 2: Retrieve broader candidate pool
+    candidate_chunks = search(
+        query_embedding,
+        top_k=10
+    )
+
+    # Step 3: Precision reranking
+    relevant_chunks = rerank_chunks(
+        req.message,
+        candidate_chunks,
+        top_k=3
+    )
     context_texts = [chunk["text"] for chunk in relevant_chunks]
     reply = get_llm_response(req.message, context_texts)
 
