@@ -2,6 +2,7 @@ import faiss
 import os
 import json
 import numpy as np
+from backend.services.embedding_service import get_embedding
 
 """
 FAISS VECTOR STORE MODULE
@@ -92,6 +93,79 @@ def load_index():
     else:
         print("No existing FAISS index found.")
 
+def cosine_similarity(a, b):
+    return np.dot(a, b)
+
+def mmr_select(
+    query_vector,
+    candidate_vectors,
+    candidate_chunks,
+    top_k=3,
+    lambda_param=0.7
+):
+    """
+    MMR:
+    balances relevance vs diversity
+    """
+
+    selected = []
+
+    remaining = list(
+        range(len(candidate_chunks))
+    )
+
+    while len(selected) < top_k and remaining:
+
+        mmr_scores = []
+
+        for idx in remaining:
+
+            relevance = cosine_similarity(
+                query_vector,
+                candidate_vectors[idx]
+            )
+
+            redundancy = 0
+
+            if selected:
+
+                redundancy = max(
+                    cosine_similarity(
+                        candidate_vectors[idx],
+                        candidate_vectors[s]
+                    )
+                    for s in selected
+                )
+
+            score = (
+                lambda_param * relevance
+                -
+                (1 - lambda_param) * redundancy
+            )
+
+            mmr_scores.append(
+                (score, idx)
+            )
+
+        mmr_scores.sort(
+            reverse=True
+        )
+
+        best_idx = mmr_scores[0][1]
+
+        selected.append(
+            best_idx
+        )
+
+        remaining.remove(
+            best_idx
+        )
+
+    return [
+        candidate_chunks[i]
+        for i in selected
+    ]
+
 
 """
 Threshold values affect how strong/weak want to filter out the weaker matches:
@@ -99,7 +173,7 @@ Threshold values affect how strong/weak want to filter out the weaker matches:
 1.5 -> balanced (moderate results)
 2.0 -> loose (more results)
 """
-def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
+def search(query_embedding: list, candidate_k: int = 10, threshold: float = 0.75):
     """
     Performs semantic similarity search over FAISS.
 
@@ -125,7 +199,7 @@ def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
     query_vector = np.array([query_embedding]).astype("float32")
     faiss.normalize_L2(query_vector)
 
-    distances, indices = index.search(query_vector, top_k)
+    distances, indices = index.search(query_vector, candidate_k)
 
     results = []
     seen = set() # want to avoid using the same chunks
@@ -142,4 +216,40 @@ def search(query_embedding: list, top_k: int = 5, threshold: float = 0.75):
                 results.append(chunk)
                 seen.add(chunk_key)
 
-    return results
+    # If no candidates found
+    if not results:
+        return []
+
+    # Build candidate vectors from retrieved chunks
+    candidate_vectors = []
+
+    for chunk in results:
+        chunk_embedding = get_embedding(
+            chunk["text"]
+        )
+
+        chunk_vector = np.array(
+            chunk_embedding
+        ).astype("float32")
+
+        faiss.normalize_L2(
+            chunk_vector.reshape(1, -1)
+        )
+
+        candidate_vectors.append(
+            chunk_vector
+        )
+
+    candidate_vectors = np.array(
+        candidate_vectors
+    )
+
+    # Apply MMR selection
+    final_results = mmr_select(
+        query_vector[0],
+        candidate_vectors,
+        results,
+        top_k=3
+    )
+
+    return final_results

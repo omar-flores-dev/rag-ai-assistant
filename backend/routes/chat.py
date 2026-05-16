@@ -48,7 +48,7 @@ def chat(req: ChatRequest):
     # Step 2: Retrieve broader candidate pool
     candidate_chunks = search(
         query_embedding,
-        top_k=10
+        candidate_k=10
     )
 
     # Step 3: Precision reranking
